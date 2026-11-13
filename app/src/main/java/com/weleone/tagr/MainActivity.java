@@ -149,7 +149,7 @@ public class MainActivity extends Activity {
     private void updateServerLabel(String url) {
         if (serverLabel == null || url == null) return;
         String shown = url.replaceFirst("^https?://", "");
-        serverLabel.setText(shown);
+        serverLabel.setText("服务器: " + shown);
     }
 
     private SharedPreferences getPrefs() {
