@@ -8,7 +8,6 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.ConsoleMessage;
-import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -60,27 +59,31 @@ public class MainActivity extends Activity {
         });
         root.addView(swipe);
 
-        // 右上角常驻设置按钮, 随时能换服务器
+        // 右上角常驻一排按钮: 黑白切换 + 设置(换服务器)
+        LinearLayout topBar = new LinearLayout(this);
+        topBar.setOrientation(LinearLayout.HORIZONTAL);
+        FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+        barLp.gravity = Gravity.TOP | Gravity.END;
+        barLp.topMargin = (int) (8 * getResources().getDisplayMetrics().density);
+        barLp.rightMargin = (int) (8 * getResources().getDisplayMetrics().density);
+        topBar.setLayoutParams(barLp);
+
+        Button themeBtn = new Button(this);
+        themeBtn.setText("◐");
+        themeBtn.setTextSize(18);
+        themeBtn.setOnClickListener(v -> toggleTheme());
+        topBar.addView(themeBtn);
+
         Button settingsBtn = new Button(this);
         settingsBtn.setText("⚙");
         settingsBtn.setTextSize(18);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
-        lp.gravity = Gravity.TOP | Gravity.END;
-        lp.topMargin = (int) (8 * getResources().getDisplayMetrics().density);
-        lp.rightMargin = (int) (8 * getResources().getDisplayMetrics().density);
-        settingsBtn.setLayoutParams(lp);
         settingsBtn.setOnClickListener(v -> showServerManager());
-        // 长按 ⚙ 跑页面诊断: 把页面真实状态弹出来, 定位登入后黑屏
-        settingsBtn.setOnLongClickListener(v -> {
-            runDiagnostics();
-            return true;
-        });
-        root.addView(settingsBtn);
+        topBar.addView(settingsBtn);
+
+        root.addView(topBar);
 
         setContentView(root);
-
-        webView.addJavascriptInterface(new DiagBridge(), "TagrDiag");
 
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -92,7 +95,7 @@ public class MainActivity extends Activity {
             s.setAlgorithmicDarkeningAllowed(false);
         }
         s.setForceDark(WebSettings.FORCE_DARK_OFF);
-        // 移动端布局 (不强制桌面版); 黑白主题由 Tagr 页面自带的切换按钮控制
+        // 移动端布局 (不强制桌面版); 黑白主题由右上角 ◐ 按钮切, 也可用页面自带的切换按钮
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -110,12 +113,6 @@ public class MainActivity extends Activity {
             @Override
             public boolean onConsoleMessage(ConsoleMessage msg) {
                 android.util.Log.d("TagrWeb", msg.message() + " (" + msg.sourceId() + ":" + msg.lineNumber() + ")");
-                // 页面 JS 报错时弹出来, 方便定位登入后黑屏的原因
-                if (msg.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
-                    String m = msg.message();
-                    if (m.length() > 120) m = m.substring(0, 120);
-                    Toast.makeText(MainActivity.this, "页面报错: " + m, Toast.LENGTH_LONG).show();
-                }
                 return true;
             }
         });
@@ -138,35 +135,20 @@ public class MainActivity extends Activity {
         webView.loadUrl(url);
     }
 
-    // 诊断: 注入 JS 查页面真实状态, 结果经 TagrDiag.show 弹出来
-    private void runDiagnostics() {
+    // 黑白切换: 按页面当前主题调 /api/config 存反向值, 成功后刷新页面生效
+    // (Tagr 主题存在服务端 user_config, 页面加载时由 layout 读出来套 dark class)
+    private void toggleTheme() {
         String js = "(function(){"
-                + "var r=[];"
-                + "r.push('url=' + location.pathname);"
-                + "r.push('viewport=' + window.innerWidth + 'x' + window.innerHeight);"
-                + "r.push('htmlClass=' + document.documentElement.className);"
-                + "r.push('bodyChildren=' + document.body.children.length);"
-                + "r.push('bodyScrollH=' + document.body.scrollHeight);"
-                + "r.push('bodyText=' + document.body.innerText.length + '字');"
-                + "r.push('bg=' + getComputedStyle(document.body).backgroundColor);"
-                + "r.push('table=' + document.querySelectorAll('table').length);"
-                + "r.push('buttons=' + document.querySelectorAll('button').length);"
-                + "r.push('hasWelcome=' + (document.body.innerText.indexOf('Scan')>=0 || document.body.innerText.indexOf('扫描')>=0));"
-                + "r.push('firstText=' + document.body.innerText.slice(0,60).replace(/\\n/g,'|'));"
-                + "TagrDiag.show(r.join('\\n'));"
+                + "var isDark = document.documentElement.classList.contains('dark');"
+                + "var next = isDark ? 'light' : 'dark';"
+                + "fetch('/api/config', {method:'PUT',"
+                + "headers:{'Content-Type':'application/json'},"
+                + "body: JSON.stringify({key:'theme', value: next})})"
+                + ".then(function(r){return r.json();})"
+                + ".then(function(j){ if (j && j.success) location.reload(); })"
+                + ".catch(function(){});"
                 + "})()";
         webView.evaluateJavascript(js, null);
-    }
-
-    private class DiagBridge {
-        @JavascriptInterface
-        public void show(final String msg) {
-            runOnUiThread(() -> new AlertDialog.Builder(MainActivity.this)
-                    .setTitle("页面诊断")
-                    .setMessage(msg)
-                    .setPositiveButton("关闭", null)
-                    .show());
-        }
     }
 
     private SharedPreferences getPrefs() {
