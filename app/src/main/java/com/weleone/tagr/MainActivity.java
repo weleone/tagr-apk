@@ -20,6 +20,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -37,8 +38,8 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private TextView serverLabel;
-    private LinearLayout topBar;
-    private Button settingsBtn;
+    private RelativeLayout topBar;
+    private TextView settingsText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,32 +51,43 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
 
-        topBar = new LinearLayout(this);
-        topBar.setOrientation(LinearLayout.HORIZONTAL);
-        topBar.setGravity(Gravity.CENTER_VERTICAL);
+        // 顶栏改 RelativeLayout: 地址全宽真正居中 (之前 LinearLayout 里 ⚙ Button 自带最小宽度,
+        // 把地址那段压窄了, 居中后也偏左); ⚙ 改窄 TextView 贴右, 不占地址的居中位置
+        topBar = new RelativeLayout(this);
         topBar.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        // 左侧显示当前服务器地址, 点它也能换服务器; 尽量居中 (占满 ⚙ 左边剩余宽度后文字居中)
+        // 地址全宽、文字居中, 点它也能换服务器; 左右各留齿轮宽度, 长地址不跑到齿轮下面
         serverLabel = new TextView(this);
         serverLabel.setTextSize(14);
         serverLabel.setSingleLine(true);
         serverLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
         serverLabel.setGravity(Gravity.CENTER);
         int pad = (int) (12 * getResources().getDisplayMetrics().density);
-        serverLabel.setPadding(pad, 0, pad, 0);
-        serverLabel.setLayoutParams(new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        int sidePad = (int) (56 * getResources().getDisplayMetrics().density);
+        serverLabel.setPadding(sidePad, pad, sidePad, pad);
+        RelativeLayout.LayoutParams labelParams = new RelativeLayout.LayoutParams(
+                RelativeLayout.LayoutParams.MATCH_PARENT,
+                RelativeLayout.LayoutParams.WRAP_CONTENT);
+        labelParams.addRule(RelativeLayout.CENTER_VERTICAL);
+        serverLabel.setLayoutParams(labelParams);
         serverLabel.setOnClickListener(v -> showServerManager());
         topBar.addView(serverLabel);
 
-        settingsBtn = new Button(this);
-        settingsBtn.setText("⚙");
-        settingsBtn.setTextSize(22);
-        settingsBtn.setBackgroundColor(Color.TRANSPARENT);
-        settingsBtn.setOnClickListener(v -> showServerManager());
-        topBar.addView(settingsBtn);
+        settingsText = new TextView(this);
+        settingsText.setText("⚙");
+        settingsText.setTextSize(22);
+        settingsText.setGravity(Gravity.CENTER);
+        settingsText.setPadding(pad, 0, pad, 0);
+        RelativeLayout.LayoutParams gearParams = new RelativeLayout.LayoutParams(
+                RelativeLayout.LayoutParams.WRAP_CONTENT,
+                RelativeLayout.LayoutParams.WRAP_CONTENT);
+        gearParams.addRule(RelativeLayout.ALIGN_PARENT_END);
+        gearParams.addRule(RelativeLayout.CENTER_VERTICAL);
+        settingsText.setLayoutParams(gearParams);
+        settingsText.setOnClickListener(v -> showServerManager());
+        topBar.addView(settingsText);
 
         root.addView(topBar);
 
@@ -166,8 +178,8 @@ public class MainActivity extends Activity {
             if (serverLabel != null) {
                 serverLabel.setTextColor(isDark ? Color.WHITE : Color.BLACK);
             }
-            if (settingsBtn != null) {
-                settingsBtn.setTextColor(isDark ? Color.WHITE : Color.BLACK);
+            if (settingsText != null) {
+                settingsText.setTextColor(isDark ? Color.WHITE : Color.BLACK);
             }
         });
     }
