@@ -20,6 +20,7 @@ import android.widget.EditText;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
@@ -34,6 +35,7 @@ public class MainActivity extends Activity {
     private static final String OLD_DEFAULT_URL = "http://192.168.2.3:8307";
 
     private WebView webView;
+    private TextView serverLabel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,10 +49,22 @@ public class MainActivity extends Activity {
 
         LinearLayout topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
-        topBar.setGravity(Gravity.END);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
         topBar.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        // 左侧显示当前服务器地址, 点它也能换服务器
+        serverLabel = new TextView(this);
+        serverLabel.setTextSize(14);
+        serverLabel.setSingleLine(true);
+        serverLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        int pad = (int) (12 * getResources().getDisplayMetrics().density);
+        serverLabel.setPadding(pad, 0, pad, 0);
+        serverLabel.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        serverLabel.setOnClickListener(v -> showServerManager());
+        topBar.addView(serverLabel);
 
         Button themeBtn = new Button(this);
         themeBtn.setText("◐");
@@ -127,12 +141,21 @@ public class MainActivity extends Activity {
             url = DEFAULT_URL;
             getPrefs().edit().putString(KEY_URL, url).apply();
         }
+        updateServerLabel(url);
         webView.loadUrl(url);
     }
 
     private void loadServer(String url) {
         getPrefs().edit().putString(KEY_URL, url).apply();
+        updateServerLabel(url);
         webView.loadUrl(url);
+    }
+
+    // 顶栏左侧显示当前服务器地址 (去掉 http:// 省地方), 换服务器时跟着变
+    private void updateServerLabel(String url) {
+        if (serverLabel == null || url == null) return;
+        String shown = url.replaceFirst("^https?://", "");
+        serverLabel.setText(shown);
     }
 
     // 黑白切换: 按页面当前主题调 /api/config 存反向值, 成功后刷新页面生效
