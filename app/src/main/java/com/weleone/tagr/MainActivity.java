@@ -66,12 +66,6 @@ public class MainActivity extends Activity {
         serverLabel.setOnClickListener(v -> showServerManager());
         topBar.addView(serverLabel);
 
-        Button themeBtn = new Button(this);
-        themeBtn.setText("◐");
-        themeBtn.setTextSize(18);
-        themeBtn.setOnClickListener(v -> toggleTheme());
-        topBar.addView(themeBtn);
-
         Button settingsBtn = new Button(this);
         settingsBtn.setText("⚙");
         settingsBtn.setTextSize(18);
@@ -109,7 +103,7 @@ public class MainActivity extends Activity {
             s.setAlgorithmicDarkeningAllowed(false);
         }
         s.setForceDark(WebSettings.FORCE_DARK_OFF);
-        // 移动端布局 (不强制桌面版); 黑白主题由右上角 ◐ 按钮切, 也可用页面自带的切换按钮
+        // 移动端布局 (不强制桌面版); 黑白主题用页面自带的切换按钮 (◐ 原生按钮已去掉, 重复了)
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -156,22 +150,6 @@ public class MainActivity extends Activity {
         if (serverLabel == null || url == null) return;
         String shown = url.replaceFirst("^https?://", "");
         serverLabel.setText(shown);
-    }
-
-    // 黑白切换: 按页面当前主题调 /api/config 存反向值, 成功后刷新页面生效
-    // (Tagr 主题存在服务端 user_config, 页面加载时由 layout 读出来套 dark class)
-    private void toggleTheme() {
-        String js = "(function(){"
-                + "var isDark = document.documentElement.classList.contains('dark');"
-                + "var next = isDark ? 'light' : 'dark';"
-                + "fetch('/api/config', {method:'PUT',"
-                + "headers:{'Content-Type':'application/json'},"
-                + "body: JSON.stringify({key:'theme', value: next})})"
-                + ".then(function(r){return r.json();})"
-                + ".then(function(j){ if (j && j.success) location.reload(); })"
-                + ".catch(function(){});"
-                + "})()";
-        webView.evaluateJavascript(js, null);
     }
 
     private SharedPreferences getPrefs() {
