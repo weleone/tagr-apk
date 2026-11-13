@@ -202,15 +202,15 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 服务器不通时显示的专设页面: 空白页 + “无服务”字样
+    // 服务器不通时显示的专设页面: “当前地址无服务” + 地址 + 右上角重选服务器的提示
     private void showNoServicePage(String url) {
         String safe = url == null ? "" : url.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
         String html = "<!DOCTYPE html><html><head><meta charset='utf-8'>"
                 + "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-                + "<style>body{margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;background:#fff;color:#888;}h1{font-size:28px;color:#666;margin:0 0 10px;}p{font-size:14px;margin:4px 0;text-align:center;padding:0 24px;}</style></head>"
-                + "<body><h1>无服务</h1>"
+                + "<style>body{margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;background:#fff;color:#888;}h1{font-size:26px;color:#666;margin:0 0 10px;text-align:center;padding:0 24px;}p{font-size:14px;margin:4px 0;text-align:center;padding:0 24px;}</style></head>"
+                + "<body><h1>当前地址无服务</h1>"
                 + "<p>" + safe + "</p>"
-                + "<p>服务器无法连接，请检查服务器是否运行，或切换到其他服务器</p>"
+                + "<p>点右上角 ⚙ 重新选择服务器</p>"
                 + "</body></html>";
         webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null);
     }
