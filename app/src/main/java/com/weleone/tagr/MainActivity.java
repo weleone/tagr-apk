@@ -17,7 +17,6 @@ import android.webkit.WebViewClient;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
@@ -40,34 +39,18 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        FrameLayout root = new FrameLayout(this);
-        webView = new WebView(this);
-        webView.setBackgroundColor(Color.WHITE);
-        // 必须填满全屏: 不设 LayoutParams 默认是 WRAP_CONTENT, WebView 高度随内容走,
-        // 页面里 100vh 就会失去参照塌掉 (诊断出 body 高只有 64px), 主界面全黑
-        webView.setLayoutParams(new SwipeRefreshLayout.LayoutParams(
-                SwipeRefreshLayout.LayoutParams.MATCH_PARENT,
-                SwipeRefreshLayout.LayoutParams.MATCH_PARENT));
-        SwipeRefreshLayout swipe = new SwipeRefreshLayout(this);
-        swipe.setLayoutParams(new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-        swipe.addView(webView);
-        swipe.setOnRefreshListener(() -> {
-            webView.reload();
-            swipe.setRefreshing(false);
-        });
-        root.addView(swipe);
+        // 顶栏独占一行 + WebView 在下面填满剩余空间:
+        // 之前 ◐/⚙ 是浮在 WebView 右上角的, 会盖住页面自己的右上角按钮
+        // (文件夹列表头的 ⋮ 菜单, 里面有重新扫描), 改成不重叠的布局
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
 
-        // 右上角常驻一排按钮: 黑白切换 + 设置(换服务器)
         LinearLayout topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
-        FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
-        barLp.gravity = Gravity.TOP | Gravity.END;
-        barLp.topMargin = (int) (8 * getResources().getDisplayMetrics().density);
-        barLp.rightMargin = (int) (8 * getResources().getDisplayMetrics().density);
-        topBar.setLayoutParams(barLp);
+        topBar.setGravity(Gravity.END);
+        topBar.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
 
         Button themeBtn = new Button(this);
         themeBtn.setText("◐");
@@ -82,6 +65,23 @@ public class MainActivity extends Activity {
         topBar.addView(settingsBtn);
 
         root.addView(topBar);
+
+        webView = new WebView(this);
+        webView.setBackgroundColor(Color.WHITE);
+        // WebView 填满顶栏下方的剩余空间 (MATCH_PARENT), 页面 100vh 以它为准, 不会塌
+        webView.setLayoutParams(new SwipeRefreshLayout.LayoutParams(
+                SwipeRefreshLayout.LayoutParams.MATCH_PARENT,
+                SwipeRefreshLayout.LayoutParams.MATCH_PARENT));
+        SwipeRefreshLayout swipe = new SwipeRefreshLayout(this);
+        swipe.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0, 1f));
+        swipe.addView(webView);
+        swipe.setOnRefreshListener(() -> {
+            webView.reload();
+            swipe.setRefreshing(false);
+        });
+        root.addView(swipe);
 
         setContentView(root);
 
