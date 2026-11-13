@@ -7,7 +7,7 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
-import android.webkit.ConsoleMessage;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -36,6 +36,8 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private TextView serverLabel;
+    private LinearLayout topBar;
+    private Button settingsBtn;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,18 +49,19 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
 
-        LinearLayout topBar = new LinearLayout(this);
+        topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         topBar.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        // 左侧显示当前服务器地址, 点它也能换服务器
+        // 左侧显示当前服务器地址, 点它也能换服务器; 尽量居中 (占满 ⚙ 左边剩余宽度后文字居中)
         serverLabel = new TextView(this);
         serverLabel.setTextSize(14);
         serverLabel.setSingleLine(true);
         serverLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        serverLabel.setGravity(Gravity.CENTER);
         int pad = (int) (12 * getResources().getDisplayMetrics().density);
         serverLabel.setPadding(pad, 0, pad, 0);
         serverLabel.setLayoutParams(new LinearLayout.LayoutParams(
@@ -66,9 +69,10 @@ public class MainActivity extends Activity {
         serverLabel.setOnClickListener(v -> showServerManager());
         topBar.addView(serverLabel);
 
-        Button settingsBtn = new Button(this);
+        settingsBtn = new Button(this);
         settingsBtn.setText("⚙");
-        settingsBtn.setTextSize(18);
+        settingsBtn.setTextSize(22);
+        settingsBtn.setBackgroundColor(Color.TRANSPARENT);
         settingsBtn.setOnClickListener(v -> showServerManager());
         topBar.addView(settingsBtn);
 
@@ -116,7 +120,20 @@ public class MainActivity extends Activity {
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
                 Toast.makeText(MainActivity.this, "页面加载失败: " + description, Toast.LENGTH_LONG).show();
             }
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                // 页面加载完后读主题 (html 有没有 dark class), 并监听 class 变化 (页面内切主题时也跟着变)
+                view.evaluateJavascript(
+                        "(function(){"
+                        + "var report = function(){"
+                        + "  if (window.ThemeBridge) ThemeBridge.setTheme(document.documentElement.classList.contains('dark')); };"
+                        + "report();"
+                        + "new MutationObserver(report).observe(document.documentElement, {attributes:true, attributeFilter:['class']});"
+                        + "})()", null);
+            }
         });
+        webView.addJavascriptInterface(new ThemeBridge(), "ThemeBridge");
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onConsoleMessage(ConsoleMessage msg) {
@@ -137,6 +154,28 @@ public class MainActivity extends Activity {
         }
         updateServerLabel(url);
         webView.loadUrl(url);
+    }
+
+    // 地址栏跟随页面黑白切换: 页面 dark 时顶栏深底白字, light 时白底黑字
+    private void applyTheme(boolean isDark) {
+        runOnUiThread(() -> {
+            if (topBar != null) {
+                topBar.setBackgroundColor(isDark ? Color.parseColor("#1E1E1E") : Color.WHITE);
+            }
+            if (serverLabel != null) {
+                serverLabel.setTextColor(isDark ? Color.WHITE : Color.BLACK);
+            }
+            if (settingsBtn != null) {
+                settingsBtn.setTextColor(isDark ? Color.WHITE : Color.BLACK);
+            }
+        });
+    }
+
+    private class ThemeBridge {
+        @JavascriptInterface
+        public void setTheme(boolean isDark) {
+            applyTheme(isDark);
+        }
     }
 
     private void loadServer(String url) {
