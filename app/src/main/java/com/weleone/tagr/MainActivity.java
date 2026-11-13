@@ -31,7 +31,8 @@ public class MainActivity extends Activity {
     private static final String PREFS = "tagr_prefs";
     private static final String KEY_URL = "server_url";
     private static final String KEY_SERVERS = "servers";
-    private static final String DEFAULT_URL = "http://192.168.2.3:8307";
+    private static final String DEFAULT_URL = "http://192.168.1.3:8307";
+    private static final String OLD_DEFAULT_URL = "http://192.168.2.3:8307";
 
     private WebView webView;
 
@@ -93,13 +94,23 @@ public class MainActivity extends Activity {
             @Override
             public boolean onConsoleMessage(ConsoleMessage msg) {
                 android.util.Log.d("TagrWeb", msg.message() + " (" + msg.sourceId() + ":" + msg.lineNumber() + ")");
+                // 页面 JS 报错时弹出来, 方便定位登入后黑屏的原因
+                if (msg.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                    String m = msg.message();
+                    if (m.length() > 120) m = m.substring(0, 120);
+                    Toast.makeText(MainActivity.this, "页面报错: " + m, Toast.LENGTH_LONG).show();
+                }
                 return true;
             }
         });
 
         // 首次启动直接进默认服务器 (之前是先弹服务器管理, 不选就一直空白)
+        // 老默认 192.168.2.3 已保存过的也迁移到新默认 192.168.1.3
         String url = getPrefs().getString(KEY_URL, null);
         if (url == null) {
+            url = DEFAULT_URL;
+            getPrefs().edit().putString(KEY_URL, url).apply();
+        } else if (url.equals(OLD_DEFAULT_URL)) {
             url = DEFAULT_URL;
             getPrefs().edit().putString(KEY_URL, url).apply();
         }
