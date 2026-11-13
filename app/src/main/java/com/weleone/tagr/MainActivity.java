@@ -3,9 +3,14 @@ package com.weleone.tagr;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
+import android.webkit.ConsoleMessage;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -16,6 +21,7 @@ import android.widget.FrameLayout;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -35,6 +41,7 @@ public class MainActivity extends Activity {
 
         FrameLayout root = new FrameLayout(this);
         webView = new WebView(this);
+        webView.setBackgroundColor(Color.WHITE);
         SwipeRefreshLayout swipe = new SwipeRefreshLayout(this);
         swipe.addView(webView);
         swipe.setOnRefreshListener(() -> {
@@ -61,17 +68,42 @@ public class MainActivity extends Activity {
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
+        s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
+        // 关掉 WebView 的强制深色: Tagr 页面自带黑白切换, 系统深色再强行加深会把页面渲染成全黑
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            s.setAlgorithmicDarkeningAllowed(false);
+        }
+        s.setForceDark(WebSettings.FORCE_DARK_OFF);
         // 移动端布局 (不强制桌面版); 黑白主题由 Tagr 页面自带的切换按钮控制
 
-        webView.setWebViewClient(new WebViewClient());
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (request.isForMainFrame()) {
+                    Toast.makeText(MainActivity.this, "页面加载失败: " + error.getDescription(), Toast.LENGTH_LONG).show();
+                }
+            }
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                Toast.makeText(MainActivity.this, "页面加载失败: " + description, Toast.LENGTH_LONG).show();
+            }
+        });
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage msg) {
+                android.util.Log.d("TagrWeb", msg.message() + " (" + msg.sourceId() + ":" + msg.lineNumber() + ")");
+                return true;
+            }
+        });
 
+        // 首次启动直接进默认服务器 (之前是先弹服务器管理, 不选就一直空白)
         String url = getPrefs().getString(KEY_URL, null);
         if (url == null) {
-            showServerManager();
-        } else {
-            webView.loadUrl(url);
+            url = DEFAULT_URL;
+            getPrefs().edit().putString(KEY_URL, url).apply();
         }
+        webView.loadUrl(url);
     }
 
     private void loadServer(String url) {
