@@ -5,3 +5,7 @@
 /build/
 /app/build/
 .DS_Store
+
+# 正式签名 keystore, 绝不进仓库 (只放 GitHub Secrets)
+*.jks
+*.keystore
