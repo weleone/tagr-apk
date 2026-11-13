@@ -44,7 +44,15 @@ public class MainActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         webView = new WebView(this);
         webView.setBackgroundColor(Color.WHITE);
+        // 必须填满全屏: 不设 LayoutParams 默认是 WRAP_CONTENT, WebView 高度随内容走,
+        // 页面里 100vh 就会失去参照塌掉 (诊断出 body 高只有 64px), 主界面全黑
+        webView.setLayoutParams(new SwipeRefreshLayout.LayoutParams(
+                SwipeRefreshLayout.LayoutParams.MATCH_PARENT,
+                SwipeRefreshLayout.LayoutParams.MATCH_PARENT));
         SwipeRefreshLayout swipe = new SwipeRefreshLayout(this);
+        swipe.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
         swipe.addView(webView);
         swipe.setOnRefreshListener(() -> {
             webView.reload();
