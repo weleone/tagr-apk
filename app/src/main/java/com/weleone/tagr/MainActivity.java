@@ -145,11 +145,11 @@ public class MainActivity extends Activity {
         webView.loadUrl(url);
     }
 
-    // 顶栏左侧显示当前服务器地址 (去掉 http:// 省地方), 换服务器时跟着变
+    // 顶栏左侧只显示裸地址 (不加“服务器:”前缀, 地址本身就是信息, 加前缀多余)
     private void updateServerLabel(String url) {
         if (serverLabel == null || url == null) return;
         String shown = url.replaceFirst("^https?://", "");
-        serverLabel.setText("服务器: " + shown);
+        serverLabel.setText(shown);
     }
 
     private SharedPreferences getPrefs() {
