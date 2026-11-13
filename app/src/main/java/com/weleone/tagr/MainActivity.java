@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.ConsoleMessage;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -62,9 +63,16 @@ public class MainActivity extends Activity {
         lp.rightMargin = (int) (8 * getResources().getDisplayMetrics().density);
         settingsBtn.setLayoutParams(lp);
         settingsBtn.setOnClickListener(v -> showServerManager());
+        // 长按 ⚙ 跑页面诊断: 把页面真实状态弹出来, 定位登入后黑屏
+        settingsBtn.setOnLongClickListener(v -> {
+            runDiagnostics();
+            return true;
+        });
         root.addView(settingsBtn);
 
         setContentView(root);
+
+        webView.addJavascriptInterface(new DiagBridge(), "TagrDiag");
 
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -120,6 +128,37 @@ public class MainActivity extends Activity {
     private void loadServer(String url) {
         getPrefs().edit().putString(KEY_URL, url).apply();
         webView.loadUrl(url);
+    }
+
+    // 诊断: 注入 JS 查页面真实状态, 结果经 TagrDiag.show 弹出来
+    private void runDiagnostics() {
+        String js = "(function(){"
+                + "var r=[];"
+                + "r.push('url=' + location.pathname);"
+                + "r.push('viewport=' + window.innerWidth + 'x' + window.innerHeight);"
+                + "r.push('htmlClass=' + document.documentElement.className);"
+                + "r.push('bodyChildren=' + document.body.children.length);"
+                + "r.push('bodyScrollH=' + document.body.scrollHeight);"
+                + "r.push('bodyText=' + document.body.innerText.length + '字');"
+                + "r.push('bg=' + getComputedStyle(document.body).backgroundColor);"
+                + "r.push('table=' + document.querySelectorAll('table').length);"
+                + "r.push('buttons=' + document.querySelectorAll('button').length);"
+                + "r.push('hasWelcome=' + (document.body.innerText.indexOf('Scan')>=0 || document.body.innerText.indexOf('扫描')>=0));"
+                + "r.push('firstText=' + document.body.innerText.slice(0,60).replace(/\\n/g,'|'));"
+                + "TagrDiag.show(r.join('\\n'));"
+                + "})()";
+        webView.evaluateJavascript(js, null);
+    }
+
+    private class DiagBridge {
+        @JavascriptInterface
+        public void show(final String msg) {
+            runOnUiThread(() -> new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("页面诊断")
+                    .setMessage(msg)
+                    .setPositiveButton("关闭", null)
+                    .show());
+        }
     }
 
     private SharedPreferences getPrefs() {
