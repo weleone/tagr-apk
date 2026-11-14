@@ -439,18 +439,44 @@ public class MainActivity extends Activity {
     // 下载到本地：弹保存位置选择（仿汽水 APK）
     // 默认下载目录走 DownloadManager，手动选位置走 SAF；两路都要带 WebView 的 Cookie，
     // 因为 /api/songs/[id]/download 要登录态，不带会被鉴权拦下
-    private void startDownloadChoice(String url, String userAgent, String contentDisposition, String mimetype) {
+    // 文件名：先从 Content-Disposition 的 filename*=UTF-8''... 里解（RFC 5987），
+    // 因为 URLUtil.guessFileName 不认 filename*，会把 /api/songs/123/download
+    // 认成 download.bin（URL 末段 download + octet-stream 后缀）
+    private String parseFileName(String url, String contentDisposition, String mimetype) {
+        if (contentDisposition != null) {
+            int i = contentDisposition.indexOf("filename*=");
+            if (i >= 0) {
+                String rest = contentDisposition.substring(i + "filename*=".length()).trim();
+                int q = rest.indexOf("''");
+                if (q >= 0) {
+                    String encoded = rest.substring(q + 2).trim();
+                    int end = encoded.indexOf('"');
+                    if (end >= 0) encoded = encoded.substring(0, end);
+                    end = encoded.indexOf(';');
+                    if (end >= 0) encoded = encoded.substring(0, end);
+                    try {
+                        String decoded = java.net.URLDecoder.decode(encoded, "UTF-8");
+                        if (decoded != null && !decoded.isEmpty()) return decoded;
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
         String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
         // 服务器头会把 "-.mp3; filename*=UTF-8''..." 当成文件名, 这里兜底解出来
         if (fileName != null && (fileName.contains(";") || fileName.contains("filename"))) {
-            int i = fileName.indexOf("UTF-8''");
-            if (i >= 0) {
-                try { fileName = java.net.URLDecoder.decode(fileName.substring(i + 7), "UTF-8"); }
+            int j = fileName.indexOf("UTF-8''");
+            if (j >= 0) {
+                try { fileName = java.net.URLDecoder.decode(fileName.substring(j + 7), "UTF-8"); }
                 catch (Exception ignored) { fileName = null; }
             } else {
                 fileName = null;
             }
         }
+        return fileName;
+    }
+
+    private void startDownloadChoice(String url, String userAgent, String contentDisposition, String mimetype) {
+        String fileName = parseFileName(url, contentDisposition, mimetype);
         if (fileName == null || fileName.isEmpty()) {
             fileName = Uri.parse(url).getLastPathSegment();
             if (fileName == null) fileName = "tagr.mp3";
