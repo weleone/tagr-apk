@@ -2,13 +2,21 @@ package com.weleone.tagr;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.DownloadManager;
+import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.ConsoleMessage;
+import android.webkit.CookieManager;
+import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
+import android.webkit.URLUtil;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -32,6 +40,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class MainActivity extends Activity {
     private static final String PREFS = "tagr_prefs";
@@ -48,6 +60,11 @@ public class MainActivity extends Activity {
     private final Map<String, Boolean> serverStatus = new HashMap<>();
     private BaseAdapter serverAdapter;
     private AlertDialog serverDialog;
+    // 下载到本地（转移弹窗出库页签）: SAF 手动选位置时暂存待下链接
+    private static final int REQ_SAVE_FILE = 1001;
+    private String pendingUrl;
+    private String pendingMime;
+    private String pendingFileName;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -158,6 +175,16 @@ public class MainActivity extends Activity {
             }
         });
         webView.addJavascriptInterface(new ThemeBridge(), "ThemeBridge");
+        // 点页面里的下载链接 (Content-Disposition: attachment), 弹保存位置选择
+        // 注意：Tagr 下载接口要登录态，DownloadManager / HttpURLConnection 都要带上
+        // WebView 的 Cookie，不然会被鉴权拦下
+        webView.setDownloadListener(new DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String userAgent, String contentDisposition,
+                                        String mimetype, long contentLength) {
+                startDownloadChoice(url, userAgent, contentDisposition, mimetype);
+            }
+        });
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onConsoleMessage(ConsoleMessage msg) {
@@ -407,6 +434,88 @@ public class MainActivity extends Activity {
                 })
                 .setNegativeButton("取消", null)
                 .show();
+    }
+
+    // 下载到本地：弹保存位置选择（仿汽水 APK）
+    // 默认下载目录走 DownloadManager，手动选位置走 SAF；两路都要带 WebView 的 Cookie，
+    // 因为 /api/songs/[id]/download 要登录态，不带会被鉴权拦下
+    private void startDownloadChoice(String url, String userAgent, String contentDisposition, String mimetype) {
+        String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
+        // 服务器头会把 "-.mp3; filename*=UTF-8''..." 当成文件名, 这里兜底解出来
+        if (fileName != null && (fileName.contains(";") || fileName.contains("filename"))) {
+            int i = fileName.indexOf("UTF-8''");
+            if (i >= 0) {
+                try { fileName = java.net.URLDecoder.decode(fileName.substring(i + 7), "UTF-8"); }
+                catch (Exception ignored) { fileName = null; }
+            } else {
+                fileName = null;
+            }
+        }
+        if (fileName == null || fileName.isEmpty()) {
+            fileName = Uri.parse(url).getLastPathSegment();
+            if (fileName == null) fileName = "tagr.mp3";
+        }
+        final String fUrl = url;
+        final String fMime = mimetype;
+        final String fAgent = userAgent;
+        final String fName = fileName;
+        new AlertDialog.Builder(MainActivity.this)
+                .setTitle("保存到手机哪里?")
+                .setMessage(fName)
+                .setPositiveButton("默认下载目录", (d, w) -> {
+                    DownloadManager.Request req = new DownloadManager.Request(Uri.parse(fUrl));
+                    req.setMimeType(fMime);
+                    if (fAgent != null && !fAgent.isEmpty()) req.addRequestHeader("User-Agent", fAgent);
+                    String cookie = CookieManager.getInstance().getCookie(fUrl);
+                    if (cookie != null && !cookie.isEmpty()) req.addRequestHeader("Cookie", cookie);
+                    req.setTitle(fName);
+                    req.setDescription("Tagr 下载");
+                    req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fName);
+                    DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                    dm.enqueue(req);
+                    Toast.makeText(MainActivity.this, "已开始下载到手机下载目录: " + fName, Toast.LENGTH_LONG).show();
+                })
+                .setNegativeButton("手动选位置", (d, w) -> {
+                    pendingUrl = fUrl;
+                    pendingMime = fMime;
+                    pendingFileName = fName;
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType(fMime != null && !fMime.isEmpty() ? fMime : "audio/mpeg");
+                    intent.putExtra(Intent.EXTRA_TITLE, fName);
+                    startActivityForResult(intent, REQ_SAVE_FILE);
+                })
+                .show();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_SAVE_FILE && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            Uri dest = data.getData();
+            String url = pendingUrl;
+            String name = pendingFileName;
+            new Thread(() -> {
+                try {
+                    HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                    String cookie = CookieManager.getInstance().getCookie(url);
+                    if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
+                    conn.setConnectTimeout(30000);
+                    conn.setReadTimeout(60000);
+                    conn.connect();
+                    try (InputStream in = conn.getInputStream();
+                         OutputStream out = getContentResolver().openOutputStream(dest)) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                    }
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "已保存到手机: " + name, Toast.LENGTH_LONG).show());
+                } catch (Exception e) {
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "保存失败: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }).start();
+        }
     }
 
     @Override
