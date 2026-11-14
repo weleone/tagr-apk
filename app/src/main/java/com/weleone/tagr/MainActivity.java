@@ -23,6 +23,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.documentfile.provider.DocumentFile;
 import android.widget.ArrayAdapter;
 import android.widget.BaseAdapter;
 import android.widget.Button;
@@ -65,6 +66,9 @@ public class MainActivity extends Activity {
     private String pendingUrl;
     private String pendingMime;
     private String pendingFileName;
+    // 批量下载（出库多首）：SAF 选文件夹时暂存待下清单
+    private static final int REQ_PICK_FOLDER = 1002;
+    private ArrayList<BatchFile> pendingBatch;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -175,6 +179,9 @@ public class MainActivity extends Activity {
             }
         });
         webView.addJavascriptInterface(new ThemeBridge(), "ThemeBridge");
+        // 出库批量下载的桥：页面把已选歌曲清单一次传进来，APK 只弹一次保存框，
+        // 逐个下原文件（不打包 zip）；浏览器里没有这个桥，页面改走 zip 下载
+        webView.addJavascriptInterface(new DownloadBridge(), "DownloadBridge");
         // 点页面里的下载链接 (Content-Disposition: attachment), 弹保存位置选择
         // 注意：Tagr 下载接口要登录态，DownloadManager / HttpURLConnection 都要带上
         // WebView 的 Cookie，不然会被鉴权拦下
@@ -227,6 +234,105 @@ public class MainActivity extends Activity {
         public void setTheme(boolean isDark) {
             applyTheme(isDark);
         }
+    }
+
+    // 批量下载的一首歌：下载地址 + 要保存的文件名
+    private static class BatchFile {
+        final String url;
+        final String fileName;
+        BatchFile(String url, String fileName) {
+            this.url = url;
+            this.fileName = fileName;
+        }
+    }
+
+    // 页面调的批量下载桥：downloadFiles('[{"url":"...","fileName":"..."}, ...]')
+    private class DownloadBridge {
+        @JavascriptInterface
+        public void downloadFiles(String json) {
+            ArrayList<BatchFile> files = new ArrayList<>();
+            try {
+                org.json.JSONArray arr = new org.json.JSONArray(json);
+                for (int i = 0; i < arr.length(); i++) {
+                    org.json.JSONObject obj = arr.getJSONObject(i);
+                    String url = obj.optString("url", "");
+                    String name = obj.optString("fileName", "");
+                    if (!url.isEmpty() && !name.isEmpty()) files.add(new BatchFile(url, name));
+                }
+            } catch (Exception ignored) {}
+            if (files.isEmpty()) return;
+            runOnUiThread(() -> showBatchDownloadChoice(files));
+        }
+    }
+
+    // 批量下载只弹一次保存框：默认下载目录 / 选文件夹；两路都带 WebView 的 Cookie
+    // 框里列出要下的文件名，确认前能看到是哪几首
+    private void showBatchDownloadChoice(ArrayList<BatchFile> files) {
+        StringBuilder msg = new StringBuilder();
+        int shown = Math.min(files.size(), 10);
+        for (int i = 0; i < shown; i++) {
+            if (i > 0) msg.append("\n");
+            msg.append(files.get(i).fileName);
+        }
+        if (files.size() > shown) msg.append("\n……等 ").append(files.size()).append(" 首");
+        new AlertDialog.Builder(MainActivity.this)
+                .setTitle("保存到手机哪里?")
+                .setMessage(msg.toString())
+                .setPositiveButton("默认下载目录", (d, w) -> {
+                    DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                    for (BatchFile f : files) {
+                        DownloadManager.Request req = new DownloadManager.Request(Uri.parse(f.url));
+                        req.setMimeType("audio/mpeg");
+                        String cookie = CookieManager.getInstance().getCookie(f.url);
+                        if (cookie != null && !cookie.isEmpty()) req.addRequestHeader("Cookie", cookie);
+                        req.setTitle(f.fileName);
+                        req.setDescription("Tagr 下载");
+                        req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                        req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, f.fileName);
+                        dm.enqueue(req);
+                    }
+                    Toast.makeText(MainActivity.this, "已开始下载 " + files.size() + " 首歌到手机下载目录", Toast.LENGTH_LONG).show();
+                })
+                .setNegativeButton("选文件夹", (d, w) -> {
+                    pendingBatch = files;
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                    startActivityForResult(intent, REQ_PICK_FOLDER);
+                })
+                .show();
+    }
+
+    // 批量下载写进 SAF 文件夹：逐个 HttpURLConnection（带 Cookie）拉下来写进去
+    private void downloadBatchToFolder(Uri treeUri, ArrayList<BatchFile> files) {
+        new Thread(() -> {
+            DocumentFile dir = DocumentFile.fromTreeUri(MainActivity.this, treeUri);
+            if (dir == null || !dir.canWrite()) {
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "文件夹不可写", Toast.LENGTH_LONG).show());
+                return;
+            }
+            int ok = 0;
+            for (BatchFile f : files) {
+                try {
+                    DocumentFile out = dir.createFile("audio/mpeg", f.fileName);
+                    if (out == null) continue;
+                    HttpURLConnection conn = (HttpURLConnection) new URL(f.url).openConnection();
+                    String cookie = CookieManager.getInstance().getCookie(f.url);
+                    if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
+                    conn.setConnectTimeout(30000);
+                    conn.setReadTimeout(60000);
+                    conn.connect();
+                    try (InputStream in = conn.getInputStream();
+                         OutputStream outStream = getContentResolver().openOutputStream(out.getUri())) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = in.read(buf)) != -1) outStream.write(buf, 0, n);
+                    }
+                    ok++;
+                } catch (Exception ignored) {}
+            }
+            int done = ok;
+            runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                    "已保存 " + done + " / " + files.size() + " 首歌", Toast.LENGTH_LONG).show());
+        }).start();
     }
 
     // 服务器不通时显示的专设页面: “当前地址无服务” + 地址 + 右上角重选服务器的提示
@@ -518,6 +624,16 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_PICK_FOLDER && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            // 批量下载选文件夹：一次选好，逐个写进去
+            Uri treeUri = data.getData();
+            getContentResolver().takePersistableUriPermission(treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            ArrayList<BatchFile> batch = pendingBatch;
+            pendingBatch = null;
+            if (batch != null && !batch.isEmpty()) downloadBatchToFolder(treeUri, batch);
+            return;
+        }
         if (requestCode == REQ_SAVE_FILE && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri dest = data.getData();
             String url = pendingUrl;
