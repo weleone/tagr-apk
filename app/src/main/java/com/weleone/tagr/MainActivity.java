@@ -171,8 +171,21 @@ public class MainActivity extends Activity {
                 // 页面加载完后读主题 (html 有没有 dark class), 并监听 class 变化 (页面内切主题时也跟着变)
                 view.evaluateJavascript(
                         "(function(){"
+                        + "function bgHex(el){"
+                        + "  var bg=getComputedStyle(el).backgroundColor;"
+                        + "  var m=bg.match(/[\\d.]+/g);"
+                        + "  if(!m) return null;"
+                        + "  if(m.length>=4 && parseFloat(m[3])===0) return null;"
+                        + "  var hex='#'+[0,1,2].map(function(i){"
+                        + "    var h=parseInt(m[i]).toString(16);"
+                        + "    return h.length==1?'0'+h:h;}).join('');"
+                        + "  return hex;"
+                        + "}"
                         + "var report = function(){"
-                        + "  if (window.ThemeBridge) ThemeBridge.setTheme(document.documentElement.classList.contains('dark')); };"
+                        + "  if (!window.ThemeBridge) return;"
+                        + "  var hex = bgHex(document.body) || bgHex(document.documentElement) || '#FFFFFF';"
+                        + "  ThemeBridge.setTheme(hex);"
+                        + "};"
                         + "report();"
                         + "new MutationObserver(report).observe(document.documentElement, {attributes:true, attributeFilter:['class']});"
                         + "})()", null);
@@ -214,25 +227,33 @@ public class MainActivity extends Activity {
         webView.loadUrl(url);
     }
 
-    // 地址栏跟随页面黑白切换: 页面 dark 时顶栏深底白字, light 时白底黑字
-    private void applyTheme(boolean isDark) {
+    // 顶栏底色跟页面真实底色走 (不是写死的 #1E1E1E): 页面纯黑时顶栏也纯黑,
+    // 浅色时也一样, 不再露出一道缝; 文字颜色按底色亮度自动选白/黑
+    private void applyTheme(String bgColor) {
         runOnUiThread(() -> {
-            if (topBar != null) {
-                topBar.setBackgroundColor(isDark ? Color.parseColor("#1E1E1E") : Color.WHITE);
-            }
-            if (serverLabel != null) {
-                serverLabel.setTextColor(isDark ? Color.WHITE : Color.BLACK);
-            }
-            if (settingsText != null) {
-                settingsText.setTextColor(isDark ? Color.WHITE : Color.BLACK);
+            try {
+                int bg = Color.parseColor(bgColor);
+                if (topBar != null) {
+                    topBar.setBackgroundColor(bg);
+                }
+                double lum = 0.299 * Color.red(bg) + 0.587 * Color.green(bg) + 0.114 * Color.blue(bg);
+                int text = lum < 128 ? Color.WHITE : Color.BLACK;
+                if (serverLabel != null) {
+                    serverLabel.setTextColor(text);
+                }
+                if (settingsText != null) {
+                    settingsText.setTextColor(text);
+                }
+            } catch (Exception e) {
+                // 颜色解析失败就保持现状
             }
         });
     }
 
     private class ThemeBridge {
         @JavascriptInterface
-        public void setTheme(boolean isDark) {
-            applyTheme(isDark);
+        public void setTheme(String bgColor) {
+            applyTheme(bgColor);
         }
     }
 
