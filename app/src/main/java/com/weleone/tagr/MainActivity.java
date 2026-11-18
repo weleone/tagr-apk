@@ -10,6 +10,10 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.method.LinkMovementMethod;
+import android.text.style.URLSpan;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.ConsoleMessage;
@@ -524,6 +528,25 @@ public class MainActivity extends Activity {
         addBtn.setText("添加服务器");
         addBtn.setOnClickListener(v -> showAddServer(servers));
         layout.addView(addBtn);
+
+        // 底部：Apk 版本号 + 可点的 GitHub（点开仓库）
+        TextView versionView = new TextView(this);
+        String ver = "";
+        try {
+            ver = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception ignored) {}
+        String label = "Apk: " + ver + "  ";
+        SpannableString span = new SpannableString(label + "GitHub");
+        span.setSpan(new URLSpan("https://github.com/weleone/tagr-apk"),
+                label.length(), span.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        versionView.setText(span);
+        versionView.setMovementMethod(LinkMovementMethod.getInstance());
+        versionView.setGravity(Gravity.CENTER);
+        versionView.setTextSize(12);
+        versionView.setTextColor(Color.GRAY);
+        int vPad = (int) (12 * getResources().getDisplayMetrics().density);
+        versionView.setPadding(0, vPad, 0, 0);
+        layout.addView(versionView);
 
         serverDialog = new AlertDialog.Builder(this)
                 .setTitle("服务器管理 (点圆点或点行切换, 长按删除)")
