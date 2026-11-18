@@ -544,7 +544,7 @@ public class MainActivity extends Activity {
         versionView.setGravity(Gravity.CENTER);
         versionView.setTextSize(12);
         versionView.setTextColor(Color.GRAY);
-        int vPad = (int) (12 * getResources().getDisplayMetrics().density);
+        int vPad = (int) (20 * getResources().getDisplayMetrics().density);
         versionView.setPadding(0, vPad, 0, 0);
         layout.addView(versionView);
 
